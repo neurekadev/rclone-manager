@@ -1,0 +1,30 @@
+name: rclone-manager
+
+services:
+  rclone-manager:
+    image: ghcr.io/neurekadev/rclone-manager:latest
+    container_name: rclone-manager
+    env_file:
+      - .env
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse:/dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    networks:
+      - rclone-manager
+    volumes:
+      - ./config:/config/rclone:ro
+      - data:/app/data
+      - cache:/cache
+      - /mnt:/mnt:rshared
+    restart: unless-stopped
+    stop_grace_period: 45s
+
+networks:
+  rclone-manager:
+
+volumes:
+  cache:
+  data:

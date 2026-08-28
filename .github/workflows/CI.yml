@@ -1,0 +1,285 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - "[0-9]*.[0-9]*.[0-9]*"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+jobs:
+  release-context:
+    name: Determine release context
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.context.outputs.publish }}
+      release: ${{ steps.context.outputs.release }}
+      prerelease: ${{ steps.context.outputs.prerelease }}
+      version: ${{ steps.context.outputs.version }}
+      label: ${{ steps.context.outputs.label }}
+    steps:
+      - name: Classify ref
+        id: context
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          echo "publish=false" >> "$GITHUB_OUTPUT"
+          echo "release=false" >> "$GITHUB_OUTPUT"
+          echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          echo "version=" >> "$GITHUB_OUTPUT"
+          echo "label=ci" >> "$GITHUB_OUTPUT"
+
+          if [[ "$EVENT_NAME" == "push" && "$GIT_REF" == "refs/heads/main" ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "label=edge" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$EVENT_NAME" != "push" || "$GIT_REF" != refs/tags/* ]]; then
+            exit 0
+          fi
+
+          version="${GIT_REF#refs/tags/}"
+          core='(0|[1-9][0-9]*)'
+          identifier='((0|[1-9][0-9]*)|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)'
+          semver="^${core}\\.${core}\\.${core}(-${identifier}(\\.${identifier})*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+          if [[ ! "$version" =~ $semver ]]; then
+            echo "Tag '$version' is not a bare Semantic Version." >&2
+            exit 1
+          fi
+
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+          echo "release=true" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "label=$version" >> "$GITHUB_OUTPUT"
+          without_build="${version%%+*}"
+          if [[ "$without_build" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  verify-go:
+    name: Verify Go
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Verify module and formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          go mod tidy -diff
+          go mod verify
+          go list -deps ./... >/dev/null
+          mapfile -t files < <(git ls-files '*.go')
+          test -z "$(gofmt -l "${files[@]}")"
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Test with race detector
+        run: go test -race ./...
+
+      - name: Build supported Linux targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build \
+              -trimpath \
+              -o "/tmp/rclone-manager-$arch" \
+              ./cmd/rclone-manager
+          done
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13.2
+
+      - name: Scan Go vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+
+  verify-container:
+    name: Verify container
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Validate Compose deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          docker compose config --quiet
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build supported image platforms
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          provenance: false
+          sbom: false
+          build-args: |
+            GIT_TAG=ci
+            GIT_HASH=${{ github.sha }}
+
+      - name: Build smoke-test image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: rclone-manager:ci
+          provenance: false
+          sbom: false
+          build-args: |
+            GIT_TAG=ci
+            GIT_HASH=${{ github.sha }}
+
+      - name: Smoke test image
+        run: docker run --rm rclone-manager:ci version
+
+  publish-image:
+    name: Publish image
+    if: needs.release-context.outputs.publish == 'true'
+    needs:
+      - release-context
+      - verify-go
+      - verify-container
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: metadata
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=edge,enable=${{ needs.release-context.outputs.release != 'true' }}
+            type=semver,pattern={{version}},value=${{ needs.release-context.outputs.version }},enable=${{ needs.release-context.outputs.release == 'true' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-context.outputs.version }},enable=${{ needs.release-context.outputs.release == 'true' }}
+            type=semver,pattern={{major}},value=${{ needs.release-context.outputs.version }},enable=${{ needs.release-context.outputs.release == 'true' }}
+            type=raw,value=latest,enable=${{ needs.release-context.outputs.release == 'true' && needs.release-context.outputs.prerelease != 'true' }}
+
+      - name: Build and publish image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            GIT_TAG=${{ needs.release-context.outputs.label }}
+            GIT_HASH=${{ github.sha }}
+
+  release:
+    name: Publish GitHub Release
+    if: needs.release-context.outputs.release == 'true'
+    needs:
+      - release-context
+      - publish-image
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Extract changelog notes
+        id: notes
+        shell: bash
+        env:
+          VERSION: ${{ needs.release-context.outputs.version }}
+        run: |
+          set -euo pipefail
+          awk -v header="## [$VERSION]" '
+            index($0, header) == 1 { capture = 1; next }
+            capture && /^## \[/ { exit }
+            capture { print }
+          ' CHANGELOG.md > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "CHANGELOG.md has no release section for $VERSION." >&2
+            exit 1
+          fi
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.release-context.outputs.version }}
+          PRERELEASE: ${{ needs.release-context.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "GitHub Release $VERSION already exists."
+            exit 0
+          fi
+          args=(--verify-tag --title "$VERSION" --notes-file release-notes.md)
+          if [[ "$PRERELEASE" == "true" ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$VERSION" "${args[@]}"

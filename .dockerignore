@@ -1,0 +1,9 @@
+.git
+.github
+.env
+.gitignore
+CHANGELOG.md
+LICENSE
+README.md
+coverage.out
+/rclone-manager
