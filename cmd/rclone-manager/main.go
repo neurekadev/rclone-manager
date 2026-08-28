@@ -61,7 +61,7 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("repair stale mount: %w", err)
 	}
 
-	binaryPath := supervisor.BinaryPath(config.DataDir)
+	binaryPath := supervisor.BinaryPath(config.BinDir)
 	installer := install.Installer{
 		BinaryPath:   binaryPath,
 		ManifestPath: supervisor.ManifestPath(config.DataDir),

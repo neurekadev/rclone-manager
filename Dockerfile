@@ -44,7 +44,7 @@ COPY --from=build /app/bin/rclone-manager /app/bin/rclone-manager
 
 WORKDIR /app
 
-ENV PATH="/app/data/bin:$PATH" \
+ENV PATH="/app/bin:$PATH" \
     RCLONE_CONFIG=/app/data/config/rclone.conf \
     RCLONE_CACHE_DIR=/app/cache
 

@@ -86,6 +86,19 @@ func TestNextDelay(t *testing.T) {
 	}
 }
 
+func TestRuntimePathsUseConfiguredDirectories(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	binDirectory := filepath.Join(root, "bin")
+	dataDirectory := filepath.Join(root, "data")
+	if got, want := BinaryPath(binDirectory), filepath.Join(binDirectory, "rclone"); got != want {
+		t.Fatalf("BinaryPath() = %q, want %q", got, want)
+	}
+	if got, want := ManifestPath(dataDirectory), filepath.Join(dataDirectory, "rclone.json"); got != want {
+		t.Fatalf("ManifestPath() = %q, want %q", got, want)
+	}
+}
+
 func runSupervisor(t *testing.T, mount *fakeMount, starter *fakeStarter, signals chan os.Signal) <-chan error {
 	t.Helper()
 	done := make(chan error, 1)

@@ -6,9 +6,9 @@ installs the selected official rclone release at runtime, forwards signals, and
 restarts rclone with capped exponential backoff when the process exits or a
 previously active mount disappears.
 
-rclone is deliberately not bundled in the image. The selected executable, its
-validation manifest, and the rclone configuration live in the persistent
-`/app/data` volume.
+rclone is deliberately not bundled in the image. The selected executable lives
+under `/app/bin`; its validation manifest and the rclone configuration live in
+the persistent `data` volume under `/app/data`.
 
 ## Why a manager?
 

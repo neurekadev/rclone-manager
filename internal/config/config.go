@@ -16,7 +16,9 @@ const (
 	DefaultVersion = "latest"
 	// DefaultShutdownTimeout bounds graceful rclone shutdown.
 	DefaultShutdownTimeout = 30 * time.Second
-	// DataDir contains manager-owned runtime downloads and metadata.
+	// BinDir contains manager-downloaded executables.
+	BinDir = "/app/bin"
+	// DataDir contains manager-owned persistent data and validation metadata.
 	DataDir = "/app/data"
 )
 

@@ -307,9 +307,9 @@ func nextDelay(current, maximum time.Duration) time.Duration {
 	return min(current*2, maximum)
 }
 
-// BinaryPath resolves the manager-owned executable path below a data directory.
-func BinaryPath(dataDirectory string) string {
-	return filepath.Join(dataDirectory, "bin", "rclone")
+// BinaryPath resolves the manager-owned executable path below a binary directory.
+func BinaryPath(binDirectory string) string {
+	return filepath.Join(binDirectory, "rclone")
 }
 
 // ManifestPath resolves the manager-owned validation manifest path.
