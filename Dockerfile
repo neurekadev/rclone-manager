@@ -38,15 +38,15 @@ RUN apt-get update \
         tzdata \
     && sed -i 's/^#user_allow_other/user_allow_other/' /etc/fuse.conf \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /app/bin /app/data /cache /config/rclone /mnt/rclone
+    && mkdir -p /app/bin /app/cache /app/data/config /mnt/rclone
 
 COPY --from=build /app/bin/rclone-manager /app/bin/rclone-manager
 
 WORKDIR /app
 
 ENV PATH="/app/data/bin:$PATH" \
-    RCLONE_CONFIG=/config/rclone/rclone.conf \
-    RCLONE_CACHE_DIR=/cache
+    RCLONE_CONFIG=/app/data/config/rclone.conf \
+    RCLONE_CACHE_DIR=/app/cache
 
 VOLUME ["/app/data"]
 

@@ -6,8 +6,9 @@ installs the selected official rclone release at runtime, forwards signals, and
 restarts rclone with capped exponential backoff when the process exits or a
 previously active mount disappears.
 
-rclone is deliberately not bundled in the image. The selected executable and
-its validation manifest live in the persistent `/app/data` volume.
+rclone is deliberately not bundled in the image. The selected executable, its
+validation manifest, and the rclone configuration live in the persistent
+`/app/data` volume.
 
 ## Why a manager?
 
@@ -37,12 +38,16 @@ the container.
 
 ```console
 cp .env.example .env
-mkdir -p config
 $EDITOR .env
-$EDITOR config/rclone.conf
 docker compose up -d
+docker compose exec rclone-manager rclone config
+docker compose restart rclone-manager
 docker compose logs -f rclone-manager
 ```
+
+The interactive `rclone config` command writes
+`/app/data/config/rclone.conf` directly to the `data` named volume. The manager
+may retry the configured mount until that first-time setup is complete.
 
 The included Compose deployment mounts host `/mnt` into the container with
 `rshared` propagation. The corresponding host mount must itself be shared. You
@@ -83,8 +88,8 @@ rclone process. The image supplies these native defaults:
 
 | Native rclone variable | Image default |
 | --- | --- |
-| `RCLONE_CONFIG` | `/config/rclone/rclone.conf` |
-| `RCLONE_CACHE_DIR` | `/cache` |
+| `RCLONE_CONFIG` | `/app/data/config/rclone.conf` |
+| `RCLONE_CACHE_DIR` | `/app/cache` |
 
 Add any native rclone environment option directly to `.env`. For example, the
 shell command in the motivating deployment maps to:

@@ -15,9 +15,8 @@ services:
     networks:
       - rclone-manager
     volumes:
-      - ./config:/config/rclone:ro
       - data:/app/data
-      - cache:/cache
+      - cache:/app/cache
       - /mnt:/mnt:rshared
     restart: unless-stopped
     stop_grace_period: 45s
