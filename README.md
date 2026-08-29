@@ -3,7 +3,7 @@
 # Rclone Manager
 
 [![Release](https://img.shields.io/github/v/release/neurekadev/rclone-manager?style=flat-square&label=Release&color=F43F5E&logo=github&logoColor=F43F5E)](https://github.com/neurekadev/rclone-manager/releases)
-[![CI](https://img.shields.io/github/actions/workflow/status/neurekadev/rclone-manager/CI.yml?branch=main&style=flat-square&label=CI&color=8B5CF6&logo=githubactions&logoColor=8B5CF6)](https://github.com/neurekadev/rclone-manager/actions/workflows/CI.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/neurekadev/rclone-manager/CI.yaml?branch=main&style=flat-square&label=CI&color=8B5CF6&logo=githubactions&logoColor=8B5CF6)](https://github.com/neurekadev/rclone-manager/actions/workflows/CI.yaml)
 [![License](https://img.shields.io/github/license/neurekadev/rclone-manager?style=flat-square&label=License&color=14B8A6&logo=opensourceinitiative&logoColor=14B8A6)](./LICENSE)
 [![AI](https://img.shields.io/badge/AI-assisted-5786FE?style=flat-square&logo=deepseek&logoColor=5786FE)](https://github.com/neurekadev/rclone-manager)
 [![Stars](https://img.shields.io/github/stars/neurekadev/rclone-manager?style=flat-square&label=Stars&color=EAB308&logo=googlegemini&logoColor=EAB308)](https://github.com/neurekadev/rclone-manager)
