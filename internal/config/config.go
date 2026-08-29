@@ -127,7 +127,8 @@ func SanitizedEnvironment(environ []string) []string {
 }
 
 func managerVariable(key string) bool {
-	return key == "RCLONE_REMOTE" ||
+	return key == "TELEMETRY" ||
+		key == "RCLONE_REMOTE" ||
 		key == "RCLONE_VERSION" ||
 		key == "RCLONE_MOUNTPOINT" ||
 		key == "RCLONE_DAEMON" ||

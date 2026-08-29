@@ -69,6 +69,7 @@ func TestRcloneEnvironment(t *testing.T) {
 		"RCLONE_MOUNTPOINT=/mnt/x",
 		"RCLONE_MANAGER_SHUTDOWN_TIMEOUT=30s",
 		"RCLONE_DAEMON=true",
+		"TELEMETRY=false",
 		"RCLONE_VFS_CACHE_MODE=full",
 		"RCLONE_CONFIG_X_TYPE=sftp",
 	}

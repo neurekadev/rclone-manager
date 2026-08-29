@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/neurekadev/rclone-manager/internal/install"
 	"github.com/neurekadev/rclone-manager/internal/mount"
 	"github.com/neurekadev/rclone-manager/internal/supervisor"
+	"github.com/neurekadev/rclone-manager/internal/telemetry"
 )
 
 var (
@@ -27,14 +30,63 @@ func main() {
 		return
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	if err := run(logger); err != nil {
-		logger.Error("rclone-manager stopped", "error", err)
-		os.Exit(1)
+	verification := len(os.Args) == 2 && os.Args[1] == "telemetry-test"
+	level := slog.LevelInfo
+	if verification {
+		level = slog.LevelDebug
 	}
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
+	os.Exit(execute(logger, verification))
 }
 
-func run(logger *slog.Logger) error {
+func execute(logger *slog.Logger, verification bool) (code int) {
+	reporter, telemetryErr := telemetry.New(telemetry.Options{
+		DataDir:      config.DataDir,
+		Release:      gitTag,
+		Environment:  deploymentEnvironment(),
+		Platform:     runtime.GOOS + "-" + runtime.GOARCH,
+		Logger:       logger,
+		Verification: verification,
+	})
+	if telemetryErr != nil {
+		logger.Warn("Beacon telemetry is unavailable", "error", telemetryErr)
+	}
+	defer func() { reporter.Close(code == 0) }()
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			code = 2
+			reporter.Recover(recovered)
+			panic(recovered)
+		}
+	}()
+
+	if verification {
+		if !reporter.Enabled() {
+			logger.Error("Beacon telemetry verification requires telemetry to be enabled")
+			return 1
+		}
+		reporter.Start()
+		if !reporter.CaptureException(errors.New("controlled Beacon error reporting verification")) {
+			logger.Error("failed to queue controlled Beacon error event")
+			return 1
+		}
+		if !reporter.FlushErrors() {
+			logger.Error("controlled Beacon error event flush timed out")
+			return 1
+		}
+		logger.Info("sent controlled handled Beacon error event")
+		return 0
+	}
+
+	if err := run(logger, reporter); err != nil {
+		reporter.CaptureException(err)
+		logger.Error("rclone-manager stopped", "error", err)
+		return 1
+	}
+	return 0
+}
+
+func run(logger *slog.Logger, reporter *telemetry.Reporter) error {
 	cfg, err := config.Load(os.Environ())
 	if err != nil {
 		return err
@@ -97,7 +149,15 @@ func run(logger *slog.Logger) error {
 		Logger:          logger,
 		ShutdownTimeout: cfg.ShutdownTimeout,
 	}
+	reporter.Start()
 	return manager.Run(context.Background(), signals)
+}
+
+func deploymentEnvironment() string {
+	if environment := strings.TrimSpace(os.Getenv("RCLONE_MANAGER_ENVIRONMENT")); environment != "" {
+		return environment
+	}
+	return "production"
 }
 
 func ensureRclone(ctx context.Context, logger *slog.Logger, installer install.Installer, version string) (install.Result, error) {

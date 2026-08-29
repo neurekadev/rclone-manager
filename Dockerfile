@@ -9,7 +9,7 @@ ARG GIT_HASH=unknown
 
 WORKDIR /app
 
-COPY go.mod ./
+COPY go.mod go.sum ./
 COPY cmd ./cmd
 COPY internal ./internal
 

@@ -67,6 +67,8 @@ Make the propagation setting persistent using the configuration appropriate for 
 | `RCLONE_VERSION` | No | `latest` | Latest stable rclone release or an exact stable version such as `1.74.2`; an optional leading `v` is accepted. |
 | `RCLONE_MOUNTPOINT` | No | `/mnt/rclone` | Absolute mountpoint owned and supervised by Rclone Manager. The filesystem root is rejected. |
 | `RCLONE_MANAGER_SHUTDOWN_TIMEOUT` | No | `30s` | Positive Go duration allowed for graceful rclone shutdown before forced cleanup. |
+| `RCLONE_MANAGER_ENVIRONMENT` | No | `production` | Deployment environment attached to error reports. |
+| `TELEMETRY` | No | enabled | Set to the exact case-sensitive value `false` to disable error reporting and anonymous lifecycle analytics. |
 
 All native `RCLONE_*` environment variables may be added to `.env` and are forwarded to rclone, except `RCLONE_DAEMON`. Daemon mode is ignored because Rclone Manager must supervise rclone in the foreground.
 
@@ -103,4 +105,14 @@ Rclone Manager turns an rclone FUSE mount into an unattended service. It recover
 
 Rclone Manager automatically reports unexpected application errors and anonymous lifecycle events. Automatic error reporting helps fix bugs faster without requiring any action from you. Telemetry is stored on official Neureka.Dev servers and is never provided to third parties.
 
-To disable error reporting and anonymous lifecycle analytics, add `TELEMETRY=false` to your `.env` file and restart Rclone Manager.
+One random installation ID is stored at `/app/data/install-id`, which the included `data` volume preserves across container recreation. Lifecycle analytics contain only this anonymous ID, the application release, platform, timestamp, and one of `app_started`, `heartbeat`, or `app_exited`.
+
+To disable both integrations, add `TELEMETRY=false` to your `.env` file and restart Rclone Manager. Only that exact value opts out.
+
+Run a controlled delivery check without starting rclone or its mount:
+
+```bash
+docker compose run --rm rclone-manager telemetry-test
+```
+
+The command sends a handled error event and lifecycle events, flushes the error SDK, and logs Beacon's acceptance responses before it exits. It uses public ingestion-only credentials embedded in the application; no Sentry account, authentication token, or additional telemetry configuration is required.
