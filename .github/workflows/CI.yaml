@@ -380,9 +380,14 @@ jobs:
             echo "Image metadata did not produce a version." >&2
             exit 1
           fi
-          manifest="$(docker buildx imagetools inspect "$IMAGE:$VERSION")"
-          grep -Fq 'Platform: linux/amd64' <<< "$manifest"
-          grep -Fq 'Platform: linux/arm64' <<< "$manifest"
+          manifest="$(docker buildx imagetools inspect --raw "$IMAGE:$VERSION")"
+          for platform in linux/amd64 linux/arm64; do
+            os="${platform%/*}"
+            architecture="${platform#*/}"
+            jq -e --arg os "$os" --arg architecture "$architecture" \
+              'any(.manifests[]?; .platform.os == $os and .platform.architecture == $architecture)' \
+              <<< "$manifest" >/dev/null
+          done
 
   release:
     name: Release
