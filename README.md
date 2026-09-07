@@ -67,8 +67,6 @@ Make the propagation setting persistent using the configuration appropriate for 
 | `RCLONE_VERSION` | No | `latest` | Latest stable rclone release or an exact stable version such as `1.74.2`; an optional leading `v` is accepted. |
 | `RCLONE_MOUNTPOINT` | No | `/mnt/rclone` | Absolute mountpoint owned and supervised by Rclone Manager. The filesystem root is rejected. |
 | `RCLONE_MANAGER_SHUTDOWN_TIMEOUT` | No | `30s` | Positive Go duration allowed for graceful rclone shutdown before forced cleanup. |
-| `RCLONE_MANAGER_ENVIRONMENT` | No | `production` | Deployment environment attached to error reports. |
-| `TELEMETRY` | No | enabled | Set to the exact case-sensitive value `false` to disable error reporting and anonymous lifecycle analytics. |
 
 All native `RCLONE_*` environment variables may be added to `.env` and are forwarded to rclone, except `RCLONE_DAEMON`. Daemon mode is ignored because Rclone Manager must supervise rclone in the foreground.
 
@@ -100,11 +98,3 @@ All native `RCLONE_*` environment variables may be added to `.env` and are forwa
 ## Why Use Rclone Manager?
 
 Rclone Manager turns an rclone FUSE mount into an unattended service. It recovers from stale attachments and child-process failures, verifies downloaded binaries before execution, protects unrelated mounts, and keeps runtime configuration and cache data persistent across container restarts.
-
-## Telemetry
-
-Rclone Manager automatically reports unexpected application errors and anonymous lifecycle events. Automatic error reporting helps fix bugs faster without requiring any action from you. Telemetry is stored on official Neureka.Dev servers and is never provided to third parties.
-
-One random installation ID is stored at `/app/data/install-id`, which the included `data` volume preserves across container recreation. Lifecycle analytics contain only this anonymous ID, the application release, platform, timestamp, and one of `app_started`, `heartbeat`, or `app_exited`.
-
-To disable both integrations, add `TELEMETRY=false` to your `.env` file and restart Rclone Manager. Only that exact value opts out.

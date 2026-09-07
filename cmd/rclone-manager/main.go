@@ -7,8 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"runtime"
-	"strings"
 	"syscall"
 	"time"
 
@@ -16,7 +14,6 @@ import (
 	"github.com/neurekadev/rclone-manager/internal/install"
 	"github.com/neurekadev/rclone-manager/internal/mount"
 	"github.com/neurekadev/rclone-manager/internal/supervisor"
-	"github.com/neurekadev/rclone-manager/internal/telemetry"
 )
 
 var (
@@ -34,35 +31,15 @@ func main() {
 	os.Exit(execute(logger))
 }
 
-func execute(logger *slog.Logger) (code int) {
-	reporter, telemetryErr := telemetry.New(telemetry.Options{
-		DataDir:     config.DataDir,
-		Release:     gitTag,
-		Environment: deploymentEnvironment(),
-		Platform:    runtime.GOOS + "-" + runtime.GOARCH,
-		Logger:      logger,
-	})
-	if telemetryErr != nil {
-		logger.Warn("Beacon telemetry is unavailable", "error", telemetryErr)
-	}
-	defer func() { reporter.Close(code == 0) }()
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			code = 2
-			reporter.Recover(recovered)
-			panic(recovered)
-		}
-	}()
-
-	if err := run(logger, reporter); err != nil {
-		reporter.CaptureException(err)
+func execute(logger *slog.Logger) int {
+	if err := run(logger); err != nil {
 		logger.Error("rclone-manager stopped", "error", err)
 		return 1
 	}
 	return 0
 }
 
-func run(logger *slog.Logger, reporter *telemetry.Reporter) error {
+func run(logger *slog.Logger) error {
 	cfg, err := config.Load(os.Environ())
 	if err != nil {
 		return err
@@ -125,15 +102,7 @@ func run(logger *slog.Logger, reporter *telemetry.Reporter) error {
 		Logger:          logger,
 		ShutdownTimeout: cfg.ShutdownTimeout,
 	}
-	reporter.Start()
 	return manager.Run(context.Background(), signals)
-}
-
-func deploymentEnvironment() string {
-	if environment := strings.TrimSpace(os.Getenv("RCLONE_MANAGER_ENVIRONMENT")); environment != "" {
-		return environment
-	}
-	return "production"
 }
 
 func ensureRclone(ctx context.Context, logger *slog.Logger, installer install.Installer, version string) (install.Result, error) {
