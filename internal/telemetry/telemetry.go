@@ -31,12 +31,11 @@ const (
 
 // Options identifies this application build and deployment to Beacon.
 type Options struct {
-	DataDir      string
-	Release      string
-	Environment  string
-	Platform     string
-	Logger       *slog.Logger
-	Verification bool
+	DataDir     string
+	Release     string
+	Environment string
+	Platform    string
+	Logger      *slog.Logger
 }
 
 // Reporter owns Beacon error reporting and lifecycle delivery.
@@ -46,7 +45,6 @@ type Reporter struct {
 	release           string
 	platform          string
 	logger            *slog.Logger
-	verification      bool
 	analyticsEndpoint string
 	analyticsAPIKey   string
 	analyticsClient   *http.Client
@@ -183,10 +181,9 @@ func newReporter(options Options, deps dependencies) (*Reporter, error) {
 		sentryOptions.HTTPClient = &http.Client{
 			Timeout: deps.deliveryTimeout,
 			Transport: statusRoundTripper{
-				base:         http.DefaultTransport,
-				logger:       logger,
-				verification: options.Verification,
-				kind:         "error event",
+				base:   http.DefaultTransport,
+				logger: logger,
+				kind:   "error event",
 			},
 		}
 	}
@@ -203,7 +200,6 @@ func newReporter(options Options, deps dependencies) (*Reporter, error) {
 	reporter.installID = installID
 	reporter.release = options.Release
 	reporter.platform = options.Platform
-	reporter.verification = options.Verification
 	reporter.analyticsEndpoint = deps.analyticsEndpoint
 	reporter.analyticsAPIKey = deps.analyticsAPIKey
 	reporter.analyticsClient = deps.analyticsClient
@@ -259,8 +255,8 @@ func (r *Reporter) Recover(recovered any) bool {
 	return r.sentryHub.Recover(recovered) != nil
 }
 
-// FlushErrors waits a bounded time for queued error events to be delivered.
-func (r *Reporter) FlushErrors() bool {
+// flushErrors waits a bounded time for queued error events to be delivered.
+func (r *Reporter) flushErrors() bool {
 	if !r.Enabled() {
 		return false
 	}
@@ -290,7 +286,7 @@ func (r *Reporter) Close(clean bool) {
 		}
 		close(r.analyticsEvents)
 		r.waitForDeliveries()
-		if !r.FlushErrors() {
+		if !r.flushErrors() {
 			r.logger.Warn("Beacon error event flush timed out")
 		}
 		r.sentryClient.Close()
@@ -357,11 +353,7 @@ func (r *Reporter) deliver(eventName string) error {
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("beacon returned HTTP %d", response.StatusCode)
 	}
-	if r.verification {
-		r.logger.Info("Beacon accepted analytics event", "event", eventName, "status", response.StatusCode)
-	} else {
-		r.logger.Debug("Beacon accepted analytics event", "event", eventName, "status", response.StatusCode)
-	}
+	r.logger.Debug("Beacon accepted analytics event", "event", eventName, "status", response.StatusCode)
 	return nil
 }
 
@@ -376,10 +368,9 @@ func (r *Reporter) waitForDeliveries() {
 }
 
 type statusRoundTripper struct {
-	base         http.RoundTripper
-	logger       *slog.Logger
-	verification bool
-	kind         string
+	base   http.RoundTripper
+	logger *slog.Logger
+	kind   string
 }
 
 func (t statusRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -388,11 +379,7 @@ func (t statusRoundTripper) RoundTrip(request *http.Request) (*http.Response, er
 		return nil, err
 	}
 	if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
-		if t.verification {
-			t.logger.Info("Beacon accepted "+t.kind, "status", response.StatusCode)
-		} else {
-			t.logger.Debug("Beacon accepted "+t.kind, "status", response.StatusCode)
-		}
+		t.logger.Debug("Beacon accepted "+t.kind, "status", response.StatusCode)
 	} else {
 		t.logger.Warn("Beacon rejected "+t.kind, "status", response.StatusCode)
 	}

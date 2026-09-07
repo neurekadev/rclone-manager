@@ -108,11 +108,3 @@ Rclone Manager automatically reports unexpected application errors and anonymous
 One random installation ID is stored at `/app/data/install-id`, which the included `data` volume preserves across container recreation. Lifecycle analytics contain only this anonymous ID, the application release, platform, timestamp, and one of `app_started`, `heartbeat`, or `app_exited`.
 
 To disable both integrations, add `TELEMETRY=false` to your `.env` file and restart Rclone Manager. Only that exact value opts out.
-
-Run a controlled delivery check without starting rclone or its mount:
-
-```bash
-docker compose run --rm rclone-manager telemetry-test
-```
-
-The command sends a handled error event and lifecycle events, flushes the error SDK, and logs Beacon's acceptance responses before it exits. It uses public ingestion-only credentials embedded in the application; no Sentry account, authentication token, or additional telemetry configuration is required.

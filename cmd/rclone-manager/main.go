@@ -30,23 +30,17 @@ func main() {
 		return
 	}
 
-	verification := len(os.Args) == 2 && os.Args[1] == "telemetry-test"
-	level := slog.LevelInfo
-	if verification {
-		level = slog.LevelDebug
-	}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
-	os.Exit(execute(logger, verification))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	os.Exit(execute(logger))
 }
 
-func execute(logger *slog.Logger, verification bool) (code int) {
+func execute(logger *slog.Logger) (code int) {
 	reporter, telemetryErr := telemetry.New(telemetry.Options{
-		DataDir:      config.DataDir,
-		Release:      gitTag,
-		Environment:  deploymentEnvironment(),
-		Platform:     runtime.GOOS + "-" + runtime.GOARCH,
-		Logger:       logger,
-		Verification: verification,
+		DataDir:     config.DataDir,
+		Release:     gitTag,
+		Environment: deploymentEnvironment(),
+		Platform:    runtime.GOOS + "-" + runtime.GOARCH,
+		Logger:      logger,
 	})
 	if telemetryErr != nil {
 		logger.Warn("Beacon telemetry is unavailable", "error", telemetryErr)
@@ -59,24 +53,6 @@ func execute(logger *slog.Logger, verification bool) (code int) {
 			panic(recovered)
 		}
 	}()
-
-	if verification {
-		if !reporter.Enabled() {
-			logger.Error("Beacon telemetry verification requires telemetry to be enabled")
-			return 1
-		}
-		reporter.Start()
-		if !reporter.CaptureException(errors.New("controlled Beacon error reporting verification")) {
-			logger.Error("failed to queue controlled Beacon error event")
-			return 1
-		}
-		if !reporter.FlushErrors() {
-			logger.Error("controlled Beacon error event flush timed out")
-			return 1
-		}
-		logger.Info("sent controlled handled Beacon error event")
-		return 0
-	}
 
 	if err := run(logger, reporter); err != nil {
 		reporter.CaptureException(err)

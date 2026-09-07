@@ -124,8 +124,8 @@ func TestErrorReportingConfigurationAndCapture(t *testing.T) {
 	if !reporter.Recover(errors.New("unhandled verification panic")) {
 		t.Fatal("Recover() = false")
 	}
-	if !reporter.FlushErrors() {
-		t.Fatal("FlushErrors() = false")
+	if !reporter.flushErrors() {
+		t.Fatal("flushErrors() = false")
 	}
 	events := transport.Events()
 	if len(events) != 2 {
