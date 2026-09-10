@@ -325,7 +325,7 @@ jobs:
       - name: Verify Multi-Platform Manifest
         shell: bash
         env:
-          VERSION: ${{ steps.metadata.outputs.version }}
+          VERSION: ${{ env.SOURCE_VERSION }}
         run: |
           set -euo pipefail
           if [[ -z "$VERSION" ]]; then
