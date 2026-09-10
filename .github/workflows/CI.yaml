@@ -4,8 +4,6 @@ on:
   push:
     branches: [main]
     tags: ["[0-9]*.[0-9]*.[0-9]*"]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions: {}
@@ -78,37 +76,13 @@ jobs:
         run: go test ./...
 
   build:
-    name: Build ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
+    name: Build
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
     env:
       CGO_ENABLED: 0
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Go
-            kind: go
-            runner: ubuntu-24.04
-          - name: Image AMD64
-            kind: container
-            component: rclone-manager
-            context: .
-            dockerfile: Dockerfile
-            arch: amd64
-            runner: ubuntu-24.04
-            platform: linux/amd64
-          - name: Image ARM64
-            kind: container
-            component: rclone-manager
-            context: .
-            dockerfile: Dockerfile
-            arch: arm64
-            runner: ubuntu-24.04-arm
-            platform: linux/arm64
-
     steps:
       - name: Check Out Repository
         uses: actions/checkout@v7
@@ -116,18 +90,15 @@ jobs:
           persist-credentials: false
 
       - name: Set Up Go
-        if: matrix.kind == 'go'
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
       - name: Build Go Packages
-        if: matrix.kind == 'go'
         run: go build ./...
 
       - name: Build Release Targets
-        if: matrix.kind == 'go'
         shell: bash
         run: |
           set -euo pipefail
@@ -139,40 +110,17 @@ jobs:
           done
 
       - name: Validate Compose Model
-        if: matrix.kind == 'go'
         shell: bash
         run: |
           set -euo pipefail
           cp .env.example .env
           docker compose config --quiet
 
-      - name: Set Up Docker Buildx
-        if: matrix.kind == 'container'
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build Image
-        if: matrix.kind == 'container'
-        uses: docker/build-push-action@v7
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
-          platforms: ${{ matrix.platform }}
-          push: false
-          provenance: false
-          sbom: false
-          build-args: |
-            GIT_TAG=ci
-            GIT_HASH=${{ github.sha }}
-          cache-from: type=gha,scope=ci-${{ matrix.component }}-${{ matrix.arch }}
-          cache-to: type=gha,scope=ci-${{ matrix.component }}-${{ matrix.arch }},mode=max,ignore-error=true
-
   publish-platforms:
     name: Publish ${{ matrix.name }}
     if: >-
-      (github.event_name == 'push' &&
-      (github.ref == 'refs/heads/main' || github.ref_type == 'tag')) ||
-      (github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository)
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || github.ref_type == 'tag')
     needs:
       - lint
       - unit-tests
@@ -194,6 +142,7 @@ jobs:
             arch: amd64
             runner: ubuntu-24.04
             platform: linux/amd64
+            cache: true
           - name: Image ARM64
             component: rclone-manager
             description: Resilient Docker supervisor for rclone FUSE mounts
@@ -202,10 +151,10 @@ jobs:
             arch: arm64
             runner: ubuntu-24.04-arm
             platform: linux/arm64
+            cache: true
     env:
       IMAGE: ghcr.io/${{ github.repository }}
-      CACHE_PREFIX: ${{ github.event_name == 'pull_request' && 'ci' || 'publish' }}
-      SOURCE_VERSION: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.ref_type == 'tag' && github.ref_name || 'edge') }}
+      SOURCE_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'edge' }}
 
     steps:
       - name: Check Out Repository
@@ -256,8 +205,8 @@ jobs:
           build-args: |
             GIT_TAG=${{ env.SOURCE_VERSION }}
             GIT_HASH=${{ github.sha }}
-          cache-from: type=gha,scope=${{ env.CACHE_PREFIX }}-${{ matrix.component }}-${{ matrix.arch }}
-          cache-to: type=gha,scope=${{ env.CACHE_PREFIX }}-${{ matrix.component }}-${{ matrix.arch }},mode=max,ignore-error=true
+          cache-from: ${{ matrix.cache && format('type=gha,scope=publish-{0}-{1}', matrix.component, matrix.arch) || '' }}
+          cache-to: ${{ matrix.cache && format('type=gha,scope=publish-{0}-{1},mode=max,ignore-error=true', matrix.component, matrix.arch) || '' }}
 
       - name: Export Digest
         shell: bash
@@ -283,10 +232,8 @@ jobs:
   publish:
     name: Publish Image
     if: >-
-      (github.event_name == 'push' &&
-      (github.ref == 'refs/heads/main' || github.ref_type == 'tag')) ||
-      (github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository)
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || github.ref_type == 'tag')
     needs:
       - publish-platforms
     runs-on: ubuntu-24.04
@@ -296,7 +243,7 @@ jobs:
       packages: write
     env:
       IMAGE: ghcr.io/${{ github.repository }}
-      SOURCE_VERSION: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.ref_type == 'tag' && github.ref_name || 'edge') }}
+      SOURCE_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'edge' }}
 
     steps:
       - name: Download Digests
@@ -325,7 +272,6 @@ jobs:
           images: ${{ env.IMAGE }}
           flavor: latest=auto
           tags: |
-            type=ref,event=pr
             type=edge
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -379,7 +325,7 @@ jobs:
       - name: Verify Multi-Platform Manifest
         shell: bash
         env:
-          VERSION: ${{ steps.metadata.outputs.version }}
+          VERSION: ${{ env.SOURCE_VERSION }}
         run: |
           set -euo pipefail
           if [[ -z "$VERSION" ]]; then
@@ -416,7 +362,10 @@ jobs:
           persist-credentials: false
 
       - name: Create Release
-        uses: neurekadev/create-release-action@1
+        uses: neurekadev/create-release-action@2
         with:
           github-token: ${{ github.token }}
           api-key: ${{ secrets.INFERENCE_API_KEY }}
+          base-url: https://api.openai.com/v1
+          model: gpt-5.6-luna
+          reasoning-effort: xhigh
